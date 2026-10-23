@@ -1,11 +1,12 @@
-# TASK-001 独立审计报告（R3 + R4 汇总）
+# TASK-001 独立审计报告（R3 + R4 + R5 汇总）
 
 > **状态：PASS-with-caveat（有条件通过，非完整独立 PASS）**
 >
 > - R3（提交 `90c75ce4`）：切片 A（玩法/状态）与切片 C（运行时/交付）产出可复核结论；切片 B 因执行装置 cwd 缺陷无效。
 > - R4（最终提交 `3eb78f9`）：在全新会话、全新工作树上补齐 **切片 B（渲染/物理）**；契约 **2/3/4/8/11 全部 PASS（机制层）**，无阻断 findings。
-> - R3 的阻断项（契约 12 / F1）已随修复提交 `3eb78f9`（F1–F13）修复并推送；修复仅经**本地真实浏览器回归 22/22** 验证，
->   **未经独立复审**，本报告不为其背书为“独立 PASS”。
+> - R3 的阻断项（契约 12 / F1）已随修复提交 `3eb78f9`（F1–F13）修复并推送；R5 在最终提交 `49183e8` 上完成**一次**独立代码级复审：
+>   **F1–F13 13/13 代码级 PASS，无阻断项**；运行时行为仍为 **UNVERIFIED**，本地 22/22 仍是本地声明，不升级为独立运行时证据（详见 §12）。
+> - R5 新发现 5 条（D-N1–D-N5），均非阻断；D-N1（页面隐藏不清理输入）为中等严重度，建议后续修复。
 > - C 片两项 UNVERIFIED（对象池/资源释放、交付文件实体清单）仍未补齐，属非阻断遗留。
 > - 本轮审计未修改源码、未提交、未推送；远端工作树审计前后 `status --porcelain -uall` 均为 0。
 
@@ -434,6 +435,140 @@ findings 8 条（见 §6）。
 
 > 本轮审计**未修改任何源码、未提交、未推送**；R4 仅在 detached 工作树只读执行一次。
 > 升级为完整独立 PASS 的条件：独立复审修复提交 + 补齐 C 两项 UNVERIFIED + 至少一次真实浏览器/移动端验收。
+
+---
+
+## 12. D 片修复复审（R5，最终提交 `49183e8`）
+
+> 目标：在最终 HEAD 上对 `3eb78f9` 的 F1–F13 修复做**一次**独立只读复审。
+> 复审员只能读代码、不能开浏览器，因此下文的 **PASS 均为代码级**；运行时行为一律标 **UNVERIFIED**，
+> 本地真实浏览器 22/22 仍只是本地声明，**不升级为独立运行时证据**。
+
+### 12.1 前置校验与执行元数据
+
+| 项 | 值 |
+| --- | --- |
+| 审计对象 | `49183e8782d36633786e150b906b71d42a981021`（代码与 `3eb78f9` 相同，之后仅文档提交） |
+| BASE | `2263425df8bd074f3c5e0d8f15e695e4f6c709e0` |
+| 拉取/校验 | `git fetch origin feature/TASK-001`；`FETCH_HEAD` = `origin/feature/TASK-001` = `49183e8…` |
+| 工作树 | `/home/devagent/worktrees/audit-TASK-001-49183e8`（`git worktree add --detach`；创建前路径不存在，拒绝复用） |
+| HEAD 断言 | `git rev-parse HEAD` = `49183e8…`（逐字节一致） |
+| cwd 断言 | `pwd -P` = 工作树路径；与 HEAD/洁净度同时通过后才调用 CLI |
+| 洁净度 | `git status --porcelain -uall` = **0 行**（审计前后均复核）；HEAD 未变 |
+| 提示词 | `evidence/P1-audit/prompts/D-fixes.txt`，2 343 B，sha256 `8c8b5e5a…ea96a85`；本机/远端哈希一致，经 stdin 投递 |
+| 行段校验 | 工作树 `index.html` = **3 232 行**；提示词最大行号 **3 232**，全部行段在文件范围内 |
+| 会话 | `7aa39463-f4d8-4aa4-ab2d-ea42d05ddc83`（**全新**，无 `--resume` / `--continue` / `--fork-session`） |
+| CLI | `/home/devagent/bin/claude-ds`；provider `api.deepseek.com`、model `deepseek-flash`（stderr 告警佐证） |
+| 结果类型 | `subtype=success`，`is_error=false`，`terminal_reason=completed` |
+| 轮数 / 时长 | `num_turns=11`；`duration_ms=78 494`；`/usr/bin/time -v` 墙钟 **1:19.89** |
+| 结果文本 | 2 504 字符；中文 617 字；结论表 **12 条数据行覆盖 F1–F13**（F2/F12 合并为一行）；新发现 **5 条** |
+| Token | input 24 001 / cache-read 51 968 / output 12 889 / thinking **0** |
+| 计费 | `totalCostUSD = 0.468214`（**CLI 自报单次观测，不可靠，不可作预算依据**） |
+| stderr | 2 行非致命告警：`[claude-code:unrecognized_model]`；DeepSeek 网关不兼容 auto-mode 计费更新 |
+| 证据目录 | 远端 `/home/devagent/p1-audit-evidence-d/D/`（700）；本机 `evidence/P1-audit/d/` |
+
+**调用命令**（cwd = 上述工作树；仅此一次，无重跑）：
+
+```bash
+/usr/bin/time -v -o /home/devagent/p1-audit-evidence-d/D/time.txt \
+  timeout -k20 600 /home/devagent/bin/claude-ds \
+  -p --safe-mode --permission-mode plan --output-format json \
+  --max-turns 20 --tools Read,Glob,Grep \
+  < /home/devagent/p1-audit-evidence-d/D/prompt.txt \
+  > /home/devagent/p1-audit-evidence-d/D/out.json \
+  2> /home/devagent/p1-audit-evidence-d/D/err.txt
+```
+
+**退出码（独立采集）**：
+
+| 层 | 退出码 | 说明 |
+| --- | --- | --- |
+| SSH | **94** | 传输正常；94 来自 runner 自身，**不是** CLI 失败 |
+| CLI / 包装器 | **0** | `timeout` 未触发（非 124/137） |
+| `/usr/bin/time -v` | **0** | `Exit status: 0` |
+| JSON 解析 | 通过 | `json_ok=true`；`is_error=false`；`result` 非空（2 504 字符） |
+| 结构化校验 | **0**（修正后） | 对**同一** `out.json` 只读复核通过；**未重跑 CLI** |
+| 重跑 | **无** | 单次调用 |
+
+**关于 SSH 94 的执行装置缺陷（如实记录）**：CLI 成功返回后，runner 调用了不存在的
+`$BASE/validate-d.py`（上传文件名多了一段前缀），校验步骤失败，runner 以 94 退出。
+修正文件名后对同一 `out.json` 重跑校验，退出 0。校验器最初还要求 F1–F13 每项单独成行，
+而复审员把 F2/F12 合并为一行，导致“缺 F2/F12”的误判；改为按行内 `F<n>` 集合计数后通过。
+两处均为**本地执行装置缺陷，不是审计结论失败，也未产生第二次模型调用**。
+
+### 12.2 资源信封（1 s 采样，55 点 / 82 s；CLI 进程树命中 53/55）
+
+| 指标 | 基线 | 峰值/区间 | 结束 |
+| --- | --- | --- | --- |
+| MemTotal / MemAvailable | 978 MiB / **683 872 kB ≈ 668 MiB** | MemAvailable 最低 **545 860 kB ≈ 533 MiB** | 685 844 kB |
+| Swap 已用 | 1 548 kB（`/swapfile` 1.5 M；`/swapfile-omp` 0） | **恒定 1 548 kB**（`SwapFree` 完全不变） | 1 548 kB |
+| `pswpin` / `pswpout` | 107 / 289 | **107 / 289**（窗口内零换页） | 不变 |
+| `pgmajfault` | 13 838 | 13 838 | 不变 |
+| `oom_kill` | 0 | **0** | 0 |
+| Load1 | 0.00 | 峰值 **0.35** | 0.10 |
+| 系统 CPU busy（逐秒 `/proc/stat`） | — | 均值 **24.3%**，峰值 **51.2%**（2 vCPU） | — |
+| CLI 进程树 RSS | — | 峰值 **266 808 kB ≈ 261 MiB**（`time -v` 268 192 kB） | 释放 |
+| CLI 进程树 CPU | — | ticks 增量 **1 087**（≈10.87 s） | — |
+| 进程 CPU（`time -v`） | — | user 10.15 s + sys 1.24 s = **11.39 s**（14% 单核） | — |
+| 进程数峰值 | 101 | 104 | 122 |
+| 代理 `trojan-go` | PID **365 811**，RSS 43 392 kB | 全程存活，PID 未变；ticks (12 573/15 413) → (12 595/15 429) | 存活 |
+| 健康闸门 | — | 未触发（无 OOM、无持续换页、内存余量充足） | — |
+
+### 12.3 F1–F13 代码级复审结论
+
+| 项 | 代码级判定 | 运行时 | 证据（`index.html`）与理由 |
+| --- | --- | --- | --- |
+| F1 | **PASS** | UNVERIFIED | `1846-1914, 2000-2003`：keydown 把全部已处理键写入 `keysDown` 并累加 `keyCount`，keyup 逐个删除；`isActive()` 依据 `keyCount>0`，长按不松不会误入自动驾驶；`blur` 由 `resetAll` 兜底。 |
+| F2 | **PASS** | UNVERIFIED | `1956-1981, 1895-1910`：画布用 `dragPointers` 按 pointerId 记录，`removeDrag` 幂等；`pointerup/cancel/lostpointercapture` 全路径清理，blur 清空全部映射与计数。 |
+| F3 | **PASS** | UNVERIFIED | `3004-3010`：brake 为真时 `accelInput=-brakeDecel`，否则才看 throttle，不再是代数和，W+S 必减速。 |
+| F4 | **PASS** | UNVERIFIED | `1705, 1718, 2871`：捕获判定与粒子爆发均使用摆动后的 `renderX`，与画面一致。 |
+| F5 | **PASS** | UNVERIFIED | `2958-2964, 3080-3085`：`started=false` 时持续重置 `lastInputMs`；首帧 `step`（含渲染）成功后才置 true 并重置空闲。 |
+| F6 | **PASS** | UNVERIFIED | `1816-1818, 1921-1943`：`pointerActs` 映射 + 按 act 的 `touchActCounts`；hold 类 `touchHeld` 归零才释放，按钮高亮也待 act 计数归零。 |
+| F7 | **PASS** | UNVERIFIED | `2162-2183, 2193, 3075, 3101-3110`：隐藏时 `audio.suspend()`，可见时 `resume()`；`audio.update` 在非 running 时直接返回；frame 在 hidden 时跳过 step（无隐藏期调度）。 |
+| F8 | **PASS** | UNVERIFIED | `2043-2044, 2176-2178`：`init` 与 `resume` 两处 `ctx.resume()` 的 Promise 均挂 `.catch`，`suspend` 亦然。 |
+| F9 | **PASS** | UNVERIFIED | `2200-2209`：BPM 仅 `Math.min(180, cadence/π*60)`，无 60 下限，停车时为 0、不产生节拍。 |
+| F10 | **PASS** | UNVERIFIED | `2632-2642`：探测上下文成功后取 `WEBGL_lose_context` 并 `loseContext()`。 |
+| F11 | **PASS** | UNVERIFIED | `178-184, 3212-3215, 3217-3228`：`#fallbackReload` 在 boot 之外绑定 `location.reload()`，boot 抛错时外层 catch 也展示 fallback，非死页。 |
+| F12 | **PASS** | UNVERIFIED | 与 F2 同一处修复：`1956-1981` 的 `dragPointers` 按 pointerId 跟踪，第二指不再覆盖第一指；复审员将 F2/F12 合并判定。 |
+| F13 | **PASS** | UNVERIFIED | `2612-2621, 3226-3227`：`showFallback` 清定时器并隐藏 `#ctxlost`，外层 catch 同样隐藏，避免叠层。 |
+
+> 复审员原始表把 F2/F12 合并为一行；上表为便于逐项核对拆成两行，判定与证据不变。
+> 复审员文本为 12 条数据行覆盖 13 个编号，**不是**漏项。
+
+### 12.4 新发现（复审员给出，均非阻断）
+
+| # | 严重度 | 文件:行号 | 问题 | 建议 |
+| --- | --- | --- | --- | --- |
+| D-N1 | **中** | `index.html:3101-3110` | `visibilitychange` 只处理音频，未调用 `resetAll`。若隐藏期间浏览器未派发 window blur（移动端切后台、部分 WebView），已按住的键/指针计数会残留，恢复后 `isActive()` 恒真、油门可能保持按住、自动驾驶被永久抑制。 | hidden 分支同时清理输入（需导出 `resetAll`）。 |
+| D-N2 | 中低 | `index.html:3086-3090, 3101-3109` | fatal 时 `showFallback` 会 `audio.suspend()`，但随后页面变为可见时 `visibilitychange` 无条件 `audio.resume()`，会把已降级页面的环境声重新拉起。 | handler 内 `if (fatal) return;`（fatal 在同一闭包可见）。 |
+| D-N3 | 低 | `index.html:3113-3121` | `webglcontextlost` 仅置 `ctxLost` 并显示提示，未 suspend 音频；`ocean/wind` 常驻音源仍会发声。 | lost 时 suspend，restored 时按可见性 resume。 |
+| D-N4 | 低 | `index.html:1933, 1939` | `finishPointer` 只对当前闭包的 `btn` 移除 `.on`。若同一 pointerId 重入且其旧 act 属于另一按钮，旧按钮可能残留高亮；受 pointer capture 限制实际少见。 | 按 act→按钮映射清理，或重入时禁止跨按钮。 |
+| D-N5 | 低 | `index.html:1870-1875` | 一次性动作键（A/D/Space/T 等）同样计入 `keyCount`；若 keyup 丢失且无 blur，自动驾驶会一直被抑制。与 D-N1 同源。 | 统一在 visibility 隐藏时清理。 |
+
+### 12.5 Spot-check（3 条，只读复核）
+
+| # | 被核验声明 | 结果 | 复核证据 |
+| --- | --- | --- | --- |
+| 1 | F3 刹车优先，不再是 `accel - brakeDecel` 代数和 | **CONFIRMED** | `3004-3010`：`if (brake) accelInput = -CFG.brakeDecel; else if (throttle) accelInput = CFG.accel;` |
+| 2 | D-N1：`visibilitychange` 未清理输入，`resetAll` 仅绑定 blur | **CONFIRMED** | `3101-3110` 仅 `audio.suspend()/resume()`；`resetAll` 定义于 `1895`，唯一绑定 `window.addEventListener('blur', resetAll)` 在 `1914`，未导出、未在 visibility 分支调用。 |
+| 3 | D-N2：fatal 挂起音频后，可见性恢复会无条件 resume | **CONFIRMED** | `3087-3089` fatal 分支 `audio.suspend()`；`3101-3108` 的 `else` 分支无 `fatal` 判断，直接 `audio.resume()`。 |
+
+### 12.6 裁决
+
+**代码级：F1–F13 全部 PASS（13/13），无 FAIL；原阻断项 F1 已关闭。**
+**运行时：F1–F13 全部 UNVERIFIED**——复审员未开浏览器、未构建、未执行交互，音频挂起/恢复、
+pointer 事件序列、22/22 回归均未独立复现；本地 22/22 仍是修复轮自测声明，**不能升级为独立运行时证据**。
+
+**新发现 5 条，均非阻断**；其中 D-N1（页面隐藏不清理输入）为中等严重度，建议后续修复，
+但它不否定 F1 的代码级修复，也不构成对契约 12 的阻断。
+
+**最终裁决：PASS-with-caveat（代码级独立复审通过，运行时未验证）**。
+
+- **阻断项：无。** `49183e8` 上未发现需要阻断交付的缺陷。
+- **遗留（非阻断）**：D-N1–D-N5；以及既有的 B-F1–B-F7、C 片两项 UNVERIFIED。
+- **升级为完整独立 PASS 的条件**：至少一次独立真实浏览器/移动端回归（覆盖 F1–F13 的运行时行为），
+  并补齐 C 片对象池/交付清单两项 UNVERIFIED。
+- 本轮**未修改源码、未提交、未推送**；工作树审计前后 `status --porcelain -uall` = 0，HEAD 未变。
 
 ---
 
