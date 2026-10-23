@@ -3,3 +3,7 @@
 /classes/
 /target/
 /out/
+evidence/
+.omp/
+.DS_Store
+*.log
