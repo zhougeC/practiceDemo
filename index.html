@@ -100,6 +100,9 @@
   .overlay p{font-size:13px;line-height:1.8;color:var(--dim);margin:0}
   .overlay code{color:var(--accent);font-family:ui-monospace,Menlo,monospace;font-size:12px}
   #ctxlost .box{background:var(--card);border:1px solid var(--card-brd);border-radius:14px;padding:22px 26px}
+  #fallbackReload{margin-top:16px;font-family:inherit;font-size:13px;font-weight:600;color:#0b1220;
+    background:var(--accent);border:0;border-radius:9px;padding:9px 20px;cursor:pointer}
+  #fallbackReload:active{transform:translateY(1px)}
   @media (max-width:620px){
     #hudLeft{min-width:132px;padding:7px 10px}
     #hudLeft .title{font-size:12px}
@@ -176,6 +179,7 @@
     <div class="box">
       <h1>无法启动 3D 场景</h1>
       <p id="fallbackMsg">当前浏览器未启用 WebGL。请使用支持 WebGL 的桌面 Chrome / Edge / Safari，或在浏览器设置中开启硬件加速后重新打开本页面。</p>
+      <button id="fallbackReload" type="button">重新加载页面</button>
     </div>
   </div>
 
@@ -1639,6 +1643,7 @@
         f.golden = !!golden;
         f.lane = clamp(lane | 0, 0, 2);
         f.x = CFG.lanes[f.lane];
+        f.renderX = f.x;
         f.z = -58 - rng() * 8;
         f.phase = rng() * TAU;
         f.body.material = golden ? matGold : matBody;
@@ -1696,8 +1701,10 @@
           var f = pool[i];
           if (!f.active) continue;
           f.z += travel * dt;
+          // 摆动后的实际渲染 x：捕获判定与粒子都用它，保证画面与抓取一致（F4）
+          f.renderX = f.x + Math.sin(time * 1.7 + f.phase) * 0.18;
           f.group.position.set(
-            f.x + Math.sin(time * 1.7 + f.phase) * 0.18,
+            f.renderX,
             1.22 + Math.sin(time * 2.6 + f.phase) * 0.20,
             f.z
           );
@@ -1707,8 +1714,8 @@
           f.ringMat.opacity = 0.30 + 0.22 * (0.5 + 0.5 * Math.sin(time * 3.2 + f.phase));
           if (f.golden) f.group.scale.setScalar(1.12);
 
-          // 同车道 + 捕获窗口：自动抓取
-          if (Math.abs(f.z) < CFG.captureZ && Math.abs(f.x - state.bikeX) < CFG.laneHalfWidth) {
+          // 同车道 + 捕获窗口：用渲染位置判定，避免“画面还差一截却已抓到”
+          if (Math.abs(f.z) < CFG.captureZ && Math.abs(f.renderX - state.bikeX) < CFG.laneHalfWidth) {
             f.active = false;
             f.group.visible = false;
             onCatch(f);
@@ -1798,11 +1805,27 @@
    * 11. Input —— 键盘 + Pointer Events 触屏（多指、pointercancel 安全）
    * ====================================================================== */
   function createInput(canvas, cb) {
+    // 键盘按下的键集合：任意键未抬起都算“用户仍在操作”，自动驾驶不得抢占（F1）。
+    // 用集合而不是单一布尔，才能同时反映 W+S、A+空格 等多键组合。
+    var keysDown = {};
+    var keyCount = 0;
+    // 长按类动作（油门/刹车）分键盘与触屏两路计数，合并后写入 held 供物理使用（F6）。
+    var keyHeld = { throttle: false, brake: false };
+    var touchHeld = { throttle: 0, brake: 0 };
     var held = { throttle: false, brake: false };
+    // 触屏按钮指针：pointerId → act，并按 act 计数，多指同按只在该 act 归零时释放。
     var pointerActs = {};
+    var touchActCounts = {};
     var activePointers = 0;
+    // 画布拖拽指针：按 pointerId 跟踪，任一指针抬起只移除自己，其余指针继续环绕（F2/F12）。
+    var dragPointers = {};
+    var dragCount = 0;
 
     function isHold(act) { return act === 'throttle' || act === 'brake'; }
+
+    function syncHold(act) {
+      held[act] = keyHeld[act] || touchHeld[act] > 0;
+    }
 
     function press(act) {
       cb.activity();
@@ -1813,19 +1836,21 @@
       else if (act === 'cam') cb.cycleCam();
       else if (act === 'ach') cb.toggleAch();
       else if (act === 'sound') cb.toggleMute();
-      else if (isHold(act)) held[act] = true;
-    }
-
-    function release(act) {
-      if (isHold(act)) held[act] = false;
+      else if (isHold(act)) {
+        // 触屏按住只加触屏计数，键盘那份由 keydown/keyup 维护，二者互不覆盖
+        touchHeld[act]++;
+        syncHold(act);
+      }
     }
 
     function onKeyDown(e) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       var handled = true;
       switch (e.code) {
-        case 'KeyW': case 'ArrowUp': held.throttle = true; break;
-        case 'KeyS': case 'ArrowDown': held.brake = true; break;
+        // 长按键：键盘状态与触屏计数分开记，keyup 只清键盘这一份
+        case 'KeyW': case 'ArrowUp': keyHeld.throttle = true; syncHold('throttle'); break;
+        case 'KeyS': case 'ArrowDown': keyHeld.brake = true; syncHold('brake'); break;
+        // 一次性动作：保持 keydown 非 repeat 才触发，避免长按连发
         case 'KeyA': case 'ArrowLeft': if (!e.repeat) cb.lane(-1); break;
         case 'KeyD': case 'ArrowRight': if (!e.repeat) cb.lane(1); break;
         case 'Space': if (!e.repeat) cb.jump(); break;
@@ -1840,44 +1865,86 @@
       }
       if (handled) {
         e.preventDefault();
+        // 记录所有已处理的键（repeat 也只需保证在集合内），keyup 才移除；
+        // isActive 据此判断“还有键按着”，而不是只看最后一次事件（F1）
+        if (e.code && !keysDown[e.code]) {
+          keysDown[e.code] = true;
+          keyCount++;
+        }
         cb.activity();
       }
     }
 
     function onKeyUp(e) {
-      if (e.code === 'KeyW' || e.code === 'ArrowUp') held.throttle = false;
-      if (e.code === 'KeyS' || e.code === 'ArrowDown') held.brake = false;
+      if (keysDown[e.code]) {
+        delete keysDown[e.code];
+        keyCount = Math.max(0, keyCount - 1);
+      }
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+        keyHeld.throttle = false;
+        syncHold('throttle');
+      }
+      if (e.code === 'KeyS' || e.code === 'ArrowDown') {
+        keyHeld.brake = false;
+        syncHold('brake');
+      }
+    }
+
+    // 失焦/隐藏时清空全部输入状态：此时浏览器可能不再派发 keyup/pointerup，
+    // 必须主动复位，否则按键或拖拽会永久卡住（F2/F6）
+    function resetAll() {
+      keysDown = {};
+      keyCount = 0;
+      keyHeld.throttle = false;
+      keyHeld.brake = false;
+      touchHeld.throttle = 0;
+      touchHeld.brake = 0;
+      syncHold('throttle');
+      syncHold('brake');
+      pointerActs = {};
+      touchActCounts = {};
+      activePointers = 0;
+      dragPointers = {};
+      dragCount = 0;
+      for (var b = 0; b < buttons.length; b++) buttons[b].classList.remove('on');
     }
 
     window.addEventListener('keydown', onKeyDown, { passive: false });
     window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', function () {
-      held.throttle = false;
-      held.brake = false;
-    });
+    window.addEventListener('blur', resetAll);
 
     // 触屏按钮：pointerdown/up/cancel/lostpointercapture 全路径释放，避免卡键
     var buttons = document.querySelectorAll('[data-act]');
     for (var i = 0; i < buttons.length; i++) {
       (function (btn) {
+        // 按 pointerId 精确释放；同一按钮被多指按住时只减该 act 的计数（F6）
+        function finishPointer(id) {
+          var act = pointerActs[id];
+          if (!act) return;
+          delete pointerActs[id];
+          touchActCounts[act] = Math.max(0, (touchActCounts[act] || 1) - 1);
+          if (touchActCounts[act] === 0) delete touchActCounts[act];
+          activePointers = Math.max(0, activePointers - 1);
+          if (isHold(act)) {
+            touchHeld[act] = Math.max(0, touchHeld[act] - 1);
+            syncHold(act);
+          }
+          // 仅当该 act 已无任何指针时才熄灭按钮，另一指仍按住时保持高亮
+          if (!touchActCounts[act]) btn.classList.remove('on');
+        }
         btn.addEventListener('pointerdown', function (e) {
           e.preventDefault();
           try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+          // 同一 pointerId 重入时先结算旧映射，避免计数泄漏
+          finishPointer(e.pointerId);
           var act = btn.getAttribute('data-act');
           pointerActs[e.pointerId] = act;
+          touchActCounts[act] = (touchActCounts[act] || 0) + 1;
           activePointers++;
           btn.classList.add('on');
           press(act);
         });
-        function finish(e) {
-          var act = pointerActs[e.pointerId];
-          if (act) {
-            release(act);
-            delete pointerActs[e.pointerId];
-            activePointers = Math.max(0, activePointers - 1);
-          }
-          btn.classList.remove('on');
-        }
+        function finish(e) { finishPointer(e.pointerId); }
         btn.addEventListener('pointerup', finish);
         btn.addEventListener('pointercancel', finish);
         btn.addEventListener('lostpointercapture', finish);
@@ -1886,27 +1953,32 @@
     }
 
     // 画布拖拽/滚轮：自由镜头环绕；任何拖拽都算用户输入
-    var dragId = null, lastX = 0, lastY = 0;
     canvas.addEventListener('pointerdown', function (e) {
-      dragId = e.pointerId;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      // 每个指针只在按下时分配一次坐标对象，pointermove 原地更新，拖动过程零分配；
+      // 同一 pointerId 重复 down 不重复计数，避免 dragCount 泄漏
+      if (!dragPointers[e.pointerId]) dragCount++;
+      dragPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
       try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
       cb.activity();
     });
     canvas.addEventListener('pointermove', function (e) {
-      if (dragId !== e.pointerId) return;
-      var dx = e.clientX - lastX;
-      var dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
+      var p = dragPointers[e.pointerId];
+      if (!p) return;
+      var dx = e.clientX - p.x;
+      var dy = e.clientY - p.y;
+      p.x = e.clientX;
+      p.y = e.clientY;
       if (cb.isOrbitMode()) cb.orbit(dx, dy);
     });
-    function endDrag(e) {
-      if (dragId === e.pointerId) dragId = null;
+    function removeDrag(id) {
+      if (!dragPointers[id]) return;
+      delete dragPointers[id];
+      dragCount = Math.max(0, dragCount - 1);
     }
+    function endDrag(e) { removeDrag(e.pointerId); }
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
+    canvas.addEventListener('lostpointercapture', endDrag);
     canvas.addEventListener('wheel', function (e) {
       if (cb.isOrbitMode()) {
         e.preventDefault();
@@ -1923,9 +1995,25 @@
     return {
       held: held,
       isTouch: isTouch,
-      // 任意持续按键/触屏按住/画布拖拽都视为“用户仍在操作”，自动驾驶不得抢占
+      // 任意按下的键、触屏按钮指针、画布拖拽指针都视为“用户仍在操作”，自动驾驶不得抢占。
+      // 只做计数/查表，无分配，可每帧调用。
       isActive: function () {
-        return held.throttle || held.brake || dragId !== null || activePointers > 0;
+        return keyCount > 0 || dragCount > 0 || activePointers > 0 ||
+          held.throttle || held.brake;
+      },
+      // 只读调试快照（测试用；仅在调用时分配）
+      debug: function () {
+        var keys = [];
+        for (var k in keysDown) {
+          if (Object.prototype.hasOwnProperty.call(keysDown, k)) keys.push(k);
+        }
+        return {
+          heldKeys: keys,
+          dragPointers: dragCount,
+          touchPointers: activePointers,
+          throttle: held.throttle,
+          brake: held.brake
+        };
       }
     };
   }
@@ -1948,8 +2036,13 @@
 
     function init() {
       if (ctx) {
-        if (ctx.state === 'suspended' && ctx.resume) {
-          try { ctx.resume(); } catch (e) { /* 忽略 */ }
+        // 只要不是 running 就尝试恢复（覆盖 suspended 与 iOS 的 interrupted）
+        if (ctx.state !== 'running' && ctx.resume) {
+          try {
+            // resume() 返回 Promise：自动播放策略拒绝时不能留下未处理的 rejection（F8）
+            var resumeP = ctx.resume();
+            if (resumeP && resumeP.catch) resumeP.catch(function () { /* 等待下一次用户手势 */ });
+          } catch (e) { /* 忽略 */ }
         }
         return;
       }
@@ -2065,6 +2158,29 @@
       isMuted: function () { return muted; },
       isReady: function () { return ready; },
       getBeatCount: function () { return beatCount; },
+      getContextState: function () { return ctx ? ctx.state : 'none'; },
+      // 页面隐藏时挂起上下文：所有常驻 loop 音源立即静音且不再推进时钟；
+      // 恢复时不会补播隐藏期间本应发生的节拍（F7）
+      suspend: function () {
+        if (!ctx || ctx.state !== 'running') return;
+        try {
+          var p = ctx.suspend();
+          if (p && p.catch) p.catch(function () { /* 忽略 */ });
+        } catch (e) { /* 忽略 */ }
+      },
+      resume: function () {
+        if (!ctx) return;
+        try {
+          // 只要不是 running 就尝试恢复（覆盖 suspended 与 iOS 的 interrupted）
+          if (ctx.state !== 'running' && ctx.resume) {
+            var p = ctx.resume();
+            if (p && p.catch) p.catch(function () { /* 自动播放策略可能拒绝，静默等待手势 */ });
+          }
+        } catch (e) { /* 忽略 */ }
+        // 从下一拍重新累计，避免隐藏/挂起期间的时间差造成节拍突进
+        musicAcc = 0;
+        hatAcc = 0;
+      },
       toggleMute: function () {
         muted = !muted;
         if (master) master.gain.value = muted ? 0 : 0.5;
@@ -2073,15 +2189,18 @@
       // 每帧：环境声随速度/夜晚变化，节拍由踏频决定
       update: function (dt, speed, night) {
         if (!ready) return;
+        // 挂起/未激活时不要调度新音符，否则恢复瞬间会集中爆发
+        if (ctx.state !== 'running') return;
         try {
           var speedN = clamp(speed / CFG.maxSpeed, 0, 1);
           var now = ctx.currentTime;
           oceanGain.gain.setTargetAtTime(0.035 + (1 - night) * 0.03, now, 0.4);
           windGain.gain.setTargetAtTime(speedN * speedN * 0.09, now, 0.3);
 
-          // 踏频（曲柄角速度）→ BPM：一拍 = 半圈曲柄
+          // 踏频（曲柄角速度）→ BPM：一拍 = 半圈曲柄。
+          // 下限不再硬编码 60：低速/停车时 BPM 随踏频一起降到 0，鼓点与踩踏同步（F9）。
           var cadence = speed / 0.42 * 0.28; // rad/s
-          var bpm = clamp(cadence / Math.PI * 60, 60, 180);
+          var bpm = Math.min(180, cadence / Math.PI * 60);
           musicAcc += dt * (bpm / 60);
           hatAcc += dt * (bpm / 60) * 2;
           while (musicAcc >= 1) {
@@ -2493,6 +2612,10 @@
     function showFallback(msg) {
       if (msg && fallbackMsgEl) fallbackMsgEl.textContent = msg;
       if (fallbackEl) fallbackEl.hidden = false;
+      // 致命降级时收起上下文丢失提示，避免两层 overlay 叠加（F13）；
+      // ctxLostTimer 在下方声明，提前调用时其值为 undefined，判断即可
+      if (ctxLostTimer) clearTimeout(ctxLostTimer);
+      if (ctxLostEl) ctxLostEl.hidden = true;
       if (hudRoot) hudRoot.style.display = 'none';
       if (touchRoot) touchRoot.style.display = 'none';
       if (helpEl) helpEl.style.display = 'none';
@@ -2509,6 +2632,14 @@
       var probeCanvas = document.createElement('canvas');
       var probeGl = probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
       probeOk = !!probeGl;
+      // 探测完成后立刻释放探测上下文：移动端 WebGL 上下文配额有限，
+      // 不释放会挤占正式渲染器可用的上下文（F10）
+      if (probeGl) {
+        var loseProbe = probeGl.getExtension && probeGl.getExtension('WEBGL_lose_context');
+        if (loseProbe) {
+          try { loseProbe.loseContext(); } catch (eLose) { /* 忽略 */ }
+        }
+      }
     } catch (e0) { probeOk = false; }
     if (!probeOk) {
       showFallback('当前环境无法创建 WebGL 上下文。请开启浏览器硬件加速后重试，或更换支持 WebGL 的浏览器。');
@@ -2637,6 +2768,9 @@
     var elapsed = 0;
     var last = performance.now();
     var lastInputMs = performance.now();
+    // 首帧渲染完成前不计空闲：着色器编译/纹理上传可能阻塞数秒，
+    // 若从 boot 时刻起算，弱机还没让用户操作就会进入自动驾驶（F5）
+    var started = false;
     var ctxLost = false;
     var fatal = false;
 
@@ -2733,7 +2867,9 @@
         state.basketCount++;
         rider.setBasketCount(state.basketCount);
       }
-      burst.burst(f.x, 1.3, f.z, f.golden);
+      // 粒子落在鱼的渲染位置（含摆动），与捕获判定同源
+      var burstX = typeof f.renderX === 'number' ? f.renderX : f.x;
+      burst.burst(burstX, 1.3, f.z, f.golden);
       audio.sfxCatch(f.golden);
     }
 
@@ -2818,13 +2954,21 @@
 
     /* ---------- 自动驾驶 ---------- */
     function updateAutopilot() {
-      // 持续按住油门/刹车/触屏/拖拽时持续刷新输入时间，避免“按键未松手却进入自动驾驶”
+      // 首帧尚未渲染完成：重置空闲计时并直接返回，避免启动耗时被算成“用户闲置”（F5）
+      if (!started) {
+        state.idleTime = 0;
+        lastInputMs = performance.now();
+        state.autoThrottle = false;
+        state.autoBrake = false;
+        return;
+      }
+      // 持续按住任意键/触屏按钮/拖拽时持续刷新输入时间，避免“按键未松手却进入自动驾驶”
       if (input.isActive()) {
         if (state.autopilot) state.autopilot = false;
         state.idleTime = 0;
         lastInputMs = performance.now();
       } else {
-        // 用墙钟计算闲置时长：首帧前的着色器编译不会“吞掉”5 秒判定
+        // 用墙钟计算闲置时长；started 之后才开始累计，首帧阻塞不计入
         state.idleTime = (performance.now() - lastInputMs) / 1000;
       }
       if (!state.autopilot && state.idleTime > CFG.idleAutopilot) {
@@ -2855,9 +2999,11 @@
       var throttle = input.held.throttle || state.autoThrottle;
       var brake = input.held.brake || state.autoBrake;
 
+      // 刹车优先：同时按住油门与刹车时不产生净加速度，直接取刹车减速度。
+      // 若用代数和（accel - brakeDecel），一旦 CFG.accel > CFG.brakeDecel 就会“W+S 仍加速”（F3）。
       var accelInput = 0;
-      if (throttle) accelInput += CFG.accel;
-      if (brake) accelInput -= CFG.brakeDecel;
+      if (brake) accelInput = -CFG.brakeDecel;
+      else if (throttle) accelInput = CFG.accel;
       if (!throttle && !brake) {
         state.speed = Math.max(0, state.speed - (CFG.coastDrag + state.speed * 0.05) * dt);
       }
@@ -2931,8 +3077,16 @@
       var dt = Math.min(rawDt, 0.05);
       try {
         step(dt);
+        if (!started) {
+          // 第一帧（含着色器编译）已完成，从此刻开始计空闲（F5）
+          started = true;
+          lastInputMs = performance.now();
+          state.idleTime = 0;
+        }
       } catch (err) {
         fatal = true;
+        // 主循环即将停止：挂起音频，避免环境声在冻结画面下继续播放
+        audio.suspend();
         showFallback('运行异常：' + (err && err.message ? err.message : '未知错误'));
       }
     }
@@ -2946,6 +3100,13 @@
 
     document.addEventListener('visibilitychange', function () {
       last = performance.now();
+      if (document.hidden) {
+        // 隐藏时挂起音频上下文：后台不再出声，也不累积待播音符（F7）
+        audio.suspend();
+      } else {
+        // 恢复时尝试 resume（自动播放策略拒绝会被内部捕获，不产生未处理 rejection）
+        audio.resume();
+      }
     });
 
     var ctxLostTimer = 0;
@@ -2978,6 +3139,7 @@
     if (window.__pelicanDemo === undefined) {
       window.__pelicanDemo = {
         getState: function () {
+          var inputDebug = input.debug();
           return {
             score: state.score,
             speedKmh: Math.round(state.speedKmh * 10) / 10,
@@ -2996,8 +3158,14 @@
             autopilot: state.autopilot,
             idleTime: Math.round(state.idleTime * 10) / 10,
             audioReady: audio.isReady(),
+            audioState: audio.getContextState(),
             muted: audio.isMuted(),
             beats: audio.getBeatCount(),
+            heldKeys: inputDebug.heldKeys,
+            dragPointers: inputDebug.dragPointers,
+            touchPointers: inputDebug.touchPointers,
+            throttleHeld: inputDebug.throttle,
+            brakeHeld: inputDebug.brake,
             jumpY: Math.round(state.jumpY * 100) / 100,
             jumps: state.jumps,
             wheelie: Math.round(state.wheelie * 100) / 100,
@@ -3040,6 +3208,12 @@
     requestAnimationFrame(frame);
   }
 
+  // 降级/致命错误的可恢复入口：按钮只做整页重载，不依赖 boot() 是否执行成功（F11）
+  var fallbackReloadBtn = document.getElementById('fallbackReload');
+  if (fallbackReloadBtn) {
+    fallbackReloadBtn.addEventListener('click', function () { location.reload(); });
+  }
+
   try {
     boot();
   } catch (err) {
@@ -3049,6 +3223,8 @@
     if (fm) fm.textContent = '初始化失败：' + (err && err.message ? err.message : '未知错误');
     var hudEl = document.getElementById('hud');
     if (hudEl) hudEl.style.display = 'none';
+    var ctxLostEl2 = document.getElementById('ctxlost');
+    if (ctxLostEl2) ctxLostEl2.hidden = true;
   }
 })();
 </script>
