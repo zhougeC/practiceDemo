@@ -1,0 +1,11 @@
+three_version=0.162.0
+esbuild_version=0.24.0
+node_version=v18.19.0
+input_path=tools/vendor/node_modules/three/build/three.module.js
+input_sha256=ec3ddc3897ec75288b5502057456c471c2eb7d6e7cf36140d0a5224e94a1984b
+output_path=vendor/three.min.js
+output_sha256=bd869f42b68296319769db683efd6c7a6f6249f35f3d39cd3bd09e9cdc7c20e7
+output_bytes=671847
+license_path=vendor/three.LICENSE
+license_sha256=4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454
+command=cd tools/vendor && npm ci && npx --no-install esbuild node_modules/three/build/three.module.js --bundle --format=iife --global-name=THREE --minify --target=es2018 --legal-comments=none --outfile=../../vendor/three.min.js

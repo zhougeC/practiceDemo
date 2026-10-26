@@ -1,0 +1,10 @@
+{
+  "name": "task-002-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TASK-002 build-time browser gates (plan.md 5.3 / UD-4); dev dependency only, never shipped",
+  "type": "module",
+  "devDependencies": {
+    "playwright": "1.48.2"
+  }
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>TASK-002 selfcheck</title>
+<style>
+  body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; margin: 16px; color: #1b1b1b; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  #summary { font-weight: 600; margin-bottom: 10px; }
+  #summary.ok { color: #1a7f37; }
+  #summary.bad { color: #b3261e; }
+  ol { padding-left: 22px; margin: 0; }
+  li { margin: 1px 0; }
+  li.bad { color: #b3261e; }
+  .detail { color: #666; }
+</style>
+</head>
+<body>
+<h1>TASK-002 selfcheck（plan.md §5.1 / §1.2 的 [selfcheck] 项）</h1>
+<div id="summary">running…</div>
+<ol id="list"></ol>
+
+<!-- §3.2：selfcheck 只加载 core 第 2–14 项（不含 vendor/three.min.js、不含 render/main） -->
+<!-- P13/P14 追加：quality.js 是第 13 项；audio.js 只提供纯函数 shouldRun 与状态镜像（不碰 DOM/THREE），
+     因此可以在这里加载以覆盖 AC-9d。 -->
+<script src="../js/core/config.js"></script>
+<script src="../js/core/mathx.js"></script>
+<script src="../js/core/input.js"></script>
+<script src="../js/core/sim.js"></script>
+<script src="../js/core/rig.js"></script>
+<script src="../js/core/fish.js"></script>
+<script src="../js/core/scarf.js"></script>
+<script src="../js/core/daynight.js"></script>
+<script src="../js/core/oceanmath.js"></script>
+<script src="../js/core/autopilot.js"></script>
+<script src="../js/core/achievements.js"></script>
+<script src="../js/core/quality.js"></script>
+<script src="../js/audio.js"></script>
+<script src="../js/store.js"></script>
+<script src="selfcheck.js"></script>
+</body>
+</html>

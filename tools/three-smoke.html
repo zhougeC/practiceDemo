@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><title>TASK-002 P0 three smoke</title><style>html,body{margin:0;height:100%;background:#101820}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script src="../vendor/three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var CTX_ATTRS = { alpha: false, depth: true, stencil: true, antialias: true, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'default', failIfMajorPerformanceCaveat: false };
+  var S = window.__smoke = { ok: false, revision: null, isWebGL2: null, glVersion: null, glRenderer: null, glslVersion: null, glIsWebGL2Context: null, angleInstancedArrays: null, threeExtHas: null, triangles: 0, coloredPixels: 0, distinctColors: 0, drawingBuffer: [0, 0], error: null, pageErrors: [] };
+  window.addEventListener('error', function (e) { S.pageErrors.push(String(e.message)); });
+  try {
+    S.revision = THREE.REVISION;
+    var canvas = document.getElementById('c');
+    var gl = canvas.getContext('webgl2', CTX_ATTRS) || canvas.getContext('webgl', CTX_ATTRS) || canvas.getContext('experimental-webgl', CTX_ATTRS);
+    if (!gl) throw new Error('no WebGL context (webgl2/webgl/experimental-webgl all null)');
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, context: gl, antialias: true, preserveDrawingBuffer: true });
+    S.isWebGL2 = renderer.capabilities.isWebGL2; S.glVersion = gl.getParameter(gl.VERSION);
+    S.glRenderer = gl.getParameter(gl.RENDERER); S.glslVersion = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+    S.glIsWebGL2Context = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+    S.angleInstancedArrays = !!gl.getExtension('ANGLE_instanced_arrays');
+    S.threeExtHas = renderer.extensions.has('ANGLE_instanced_arrays');
+    var scene = new THREE.Scene(); scene.background = new THREE.Color(0x101820);
+    var camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(1.7, 1.4, 2.5); camera.lookAt(0, 0, 0);
+    var cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshNormalMaterial());
+    cube.rotation.set(0.35, 0.6, 0.1); scene.add(cube);
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    renderer.render(scene, camera);
+    var w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, px = new Uint8Array(w * h * 4), seen = {}, colored = 0, i;
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    for (i = 0; i < px.length; i += 4) { if (px[i] !== 16 || px[i + 1] !== 24 || px[i + 2] !== 32) { colored++; seen[px[i] + ',' + px[i + 1] + ',' + px[i + 2]] = 1; } }
+    S.drawingBuffer = [w, h]; S.triangles = renderer.info.render.triangles; S.coloredPixels = colored;
+    S.distinctColors = Object.keys(seen).length; S.ok = S.triangles > 0 && colored > 0;
+  } catch (e) { S.error = String((e && e.message) || e); }
+  window.__smokeReady = true;
+})();
+</script>
+</body></html>

@@ -1,0 +1,160 @@
+/* TASK-002 P1: 页面骨架样式（plan.md §1.5 HUD、§4.11 overlay）。
+   本包只有画布全屏、HUD 容器与三态 overlay；触屏按钮与 HUD 项由 P15/P9 追加。
+   样式风格属 MAY（§2.2），但 overlay 必须单层覆盖且不拦截画布以外的布局。 */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #101820;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+#gl {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;   /* HUD 默认不吃事件，只有具体控件单独开启 */
+}
+
+/* 三态 overlay：唯一一层，覆盖全屏（§4.11 M-13） */
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(8, 12, 20, 0.82);
+  color: #f4f1ea;
+  text-align: center;
+  pointer-events: auto;   /* overlay 可见时必须能点按钮 */
+}
+
+#overlay[hidden] {
+  display: none;
+}
+
+#ov-msg {
+  max-width: 620px;
+  font-size: 17px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+#ov-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.ov-btn {
+  min-width: 104px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(244, 241, 234, 0.45);
+  border-radius: 6px;
+  background: rgba(47, 111, 222, 0.9);
+  color: #ffffff;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.ov-btn:hover {
+  background: rgba(47, 111, 222, 1);
+}
+
+/* ==== P9/P11/P12 追加：HUD 七项、toast 与成就面板的样式（MAY；ADR-39 从 index.html 内联块原样迁入）====
+   只用绝对定位覆盖在画布上，#hud 本身 pointer-events:none，只有面板与关闭按钮重新开启。
+   迁移时逐字保留，不改写上面 P1 的任何规则（选择器集合交集为 0）。 */
+#hud-tl, #hud-tr { position: absolute; padding: 10px 14px; color: #f4f1ea; text-shadow: 0 1px 2px rgba(0,0,0,.75); font-variant-numeric: tabular-nums; }
+#hud-tl { left: 0; top: 0; }
+#hud-tr { right: 0; top: 0; text-align: right; }
+#hud-speed { font-size: 30px; font-weight: 700; line-height: 1; }
+#hud-unit { font-size: 12px; opacity: .75; margin-bottom: 6px; }
+#hud-score { font-size: 18px; font-weight: 600; }
+#hud-fish { font-size: 14px; opacity: .9; }
+#hud-combo { font-size: 16px; color: #ffd58a; font-weight: 700; }
+#hud-auto { display: inline-block; padding: 2px 8px; border-radius: 4px; background: #2f6fde; color: #fff; font-weight: 700; font-size: 13px; letter-spacing: .06em; }
+/* hud.js 用 hidden 属性控制 AUTO 标记（AC-12a：接管时显示）。上面的 id 选择器优先级高于 UA 的
+   [hidden]{display:none}，若不显式兜底，hidden 就是死代码——实测 hidden=true 时仍按 inline-block 显示，
+   视频里 AUTO 会一直亮着，接管/打断在画面上无法区分。 */
+#hud-auto[hidden] { display: none; }
+#hud-ach, #hud-cam, #hud-mute { font-size: 13px; opacity: .9; }
+#hud-mute { font-size: 16px; }
+#hud-toast {
+  position: absolute; left: 50%; top: 14%; transform: translate(-50%, -8px); opacity: 0;
+  transition: opacity .3s ease, transform .3s ease; padding: 8px 16px; border-radius: 6px;
+  background: rgba(20, 28, 44, .86); color: #ffd58a; font-size: 15px; font-weight: 600; white-space: nowrap;
+}
+#hud-toast.on { opacity: 1; transform: translate(-50%, 0); }
+#ach-panel {
+  position: absolute; right: 16px; top: 96px; width: 380px; max-height: 72vh; overflow: auto;
+  padding: 12px 14px; border-radius: 8px; background: rgba(12, 18, 30, .92); color: #f4f1ea;
+  pointer-events: auto; font-size: 13px; line-height: 1.6;
+}
+#ach-head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; margin-bottom: 6px; }
+#ach-close { pointer-events: auto; background: transparent; border: 0; color: #f4f1ea; font-size: 18px; cursor: pointer; }
+#ach-rows { margin: 0; padding-left: 18px; }
+#ach-rows li.ach-on { color: #9ae6a8; }
+#ach-rows li.ach-off { color: #b9c2cf; }
+#ach-foot { margin-top: 8px; text-align: right; }
+#ach-reset { pointer-events: auto; background: rgba(183, 40, 40, .9); color: #fff; border: 0; border-radius: 5px; padding: 6px 10px; cursor: pointer; }
+
+/* ==== P15 追加：触屏控件（§4.5.4）。默认隐藏，`#hud.touch` 时显示。
+   尺寸：左下 ◀▶ 各 72 CSS px，右下 2×2 各 64，右上三枚 56（§2.2 要求 ≥56）。
+   全部 touch-action:none 并由 input.js 的 pointer capture 维持按住状态（M-16）。 */
+#touch { display: none; }
+#hud.touch #touch { display: block; }
+.tbtn {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(244, 241, 234, .38);
+  border-radius: 12px;
+  background: rgba(12, 20, 34, .46);
+  color: #f4f1ea;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+}
+.tbtn:active { background: rgba(47, 111, 222, .55); }
+#touch-move {
+  position: absolute;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 12px;
+}
+.tbtn-move { width: 72px; height: 72px; font-size: 26px; }
+#touch-act {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: 64px 64px;
+  grid-template-rows: 64px 64px;
+  gap: 8px;
+}
+.tbtn-act { width: 64px; height: 64px; font-size: 15px; }
+#touch-top {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  top: calc(96px + env(safe-area-inset-top, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tbtn-top { width: 56px; height: 56px; font-size: 22px; }

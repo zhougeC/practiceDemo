@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>鹈鹕海岸公路</title>
+<link rel="stylesheet" href="css/style.css">
+<!-- ADR-39：HUD/toast/成就面板的样式已迁入 css/style.css，本文件不再含内联样式块。 -->
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<!-- HUD 容器：P1 只有 overlay；速度/得分等项由 P9 追加，成就面板与 toast 由 P11 追加，触屏控件由 P15 追加 -->
+<div id="hud">
+  <div id="hud-tl">
+    <div id="hud-speed">0</div>
+    <div id="hud-unit">km/h</div>
+    <div id="hud-score">0</div>
+    <div id="hud-fish">0</div>
+    <div id="hud-combo" hidden>×1</div>
+  </div>
+  <div id="hud-tr">
+    <div id="hud-auto" hidden>AUTO</div>
+    <div id="hud-ach">0/14</div>
+    <div id="hud-cam">追尾</div>
+    <div id="hud-mute">🔊</div>
+  </div>
+  <div id="hud-toast" hidden></div>
+  <div id="ach-panel" hidden>
+    <div id="ach-head"><span id="ach-count">0/14</span><button id="ach-close" data-act="esc" type="button">×</button></div>
+    <ol id="ach-rows"></ol>
+    <div id="ach-foot"><button id="ach-reset" type="button">重置成就</button></div>
+  </div>
+  <!-- P15 触屏控件（§4.5.4）：粗指针设备或第一次 touch 指针后显示；键盘输入始终并存 -->
+  <div id="touch">
+    <div id="touch-move">
+      <button class="tbtn tbtn-move" data-act="left" type="button" tabindex="-1" aria-label="左移">◀</button>
+      <button class="tbtn tbtn-move" data-act="right" type="button" tabindex="-1" aria-label="右移">▶</button>
+    </div>
+    <div id="touch-act">
+      <button class="tbtn tbtn-act" data-act="throttle" type="button" tabindex="-1" aria-label="油门">▲</button>
+      <button class="tbtn tbtn-act" data-act="brake" type="button" tabindex="-1" aria-label="刹车">▼</button>
+      <button class="tbtn tbtn-act" data-act="jump" type="button" tabindex="-1" aria-label="跳跃">JUMP</button>
+      <button class="tbtn tbtn-act" data-act="wing" type="button" tabindex="-1" aria-label="展翅">WINGS</button>
+    </div>
+    <div id="touch-top">
+      <button class="tbtn tbtn-top" data-act="camNext" type="button" tabindex="-1" aria-label="切换镜头">🎥</button>
+      <button class="tbtn tbtn-top" id="touch-mute" data-act="mute" type="button" tabindex="-1" aria-label="静音">🔊</button>
+      <button class="tbtn tbtn-top" data-act="achList" type="button" tabindex="-1" aria-label="成就">🏆</button>
+    </div>
+  </div>
+  <div id="overlay" hidden>
+    <div id="ov-msg"></div>
+    <div id="ov-actions"></div>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="js/core/config.js"></script>
+<script src="js/core/mathx.js"></script>
+<script src="js/core/input.js"></script>
+<script src="js/core/sim.js"></script>
+<script src="js/core/rig.js"></script>
+<script src="js/core/fish.js"></script>
+<script src="js/core/scarf.js"></script>
+<script src="js/core/daynight.js"></script>
+<script src="js/core/oceanmath.js"></script>
+<script src="js/core/autopilot.js"></script>
+<script src="js/core/achievements.js"></script>
+<script src="js/core/quality.js"></script>
+<script src="js/store.js"></script>
+<script src="js/render/scene.js"></script>
+<script src="js/render/sky.js"></script>
+<script src="js/render/ocean.js"></script>
+<script src="js/render/world.js"></script>
+<script src="js/render/pelican.js"></script>
+<script src="js/render/fishview.js"></script>
+<script src="js/render/camera.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/debug.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
